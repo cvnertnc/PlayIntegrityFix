@@ -101,13 +101,24 @@ if [ -z "$FINGERPRINT" ] || [ -z "$SECURITY_PATCH" ]; then
 	download_fail "https://dl.google.com"
 fi
 
+# Preserve previous setting
+spoofConfig="spoofVendingSdk"
+for config in $spoofConfig; do
+	if grep -q "\"$config\": true" "$MODDIR/pif.json"; then
+		eval "$config=true"
+	else
+		eval "$config=false"
+	fi
+done
+
 echo "- Dumping values to pif.json ..."
 cat <<EOF | tee pif.json
 {
   "FINGERPRINT": "$FINGERPRINT",
   "MANUFACTURER": "Google",
   "MODEL": "$MODEL",
-  "SECURITY_PATCH": "$SECURITY_PATCH"
+  "SECURITY_PATCH": "$SECURITY_PATCH",
+  "spoofVendingSdk": $spoofVendingSdk
 }
 EOF
 
