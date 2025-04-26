@@ -9,6 +9,8 @@
 
 static std::string dir;
 static JNIEnv *env;
+static bool isGmsUnstable = false;
+static bool isVending = false;
 
 static nlohmann::json json;
 
@@ -16,6 +18,7 @@ static bool spoofProps = true, spoofProvider = true, spoofSignature = false;
 
 static bool DEBUG = false;
 static std::string DEVICE_INITIAL_SDK_INT = "21", SECURITY_PATCH, BUILD_ID;
+static int spoofVendingSdk = 0;
 
 typedef void (*T_Callback)(void *, const char *, const char *, uint32_t);
 
@@ -82,9 +85,63 @@ static bool doHook() {
     return false;
 }
 
+static void doSpoofVending() {
+    int requestSdk = 32;
+    int targetSdk;
+    int oldValue;
+
+    jclass buildVersionClass = nullptr;
+    jfieldID sdkIntFieldID = nullptr;
+
+    buildVersionClass = env->FindClass("android/os/Build$VERSION");
+    if (buildVersionClass == nullptr) {
+        LOGE("Build.VERSION class not found");
+        env->ExceptionClear();
+        return;
+    }
+
+    sdkIntFieldID = env->GetStaticFieldID(buildVersionClass, "SDK_INT", "I");
+    if (sdkIntFieldID == nullptr) {
+        LOGE("SDK_INT field not found");
+        env->ExceptionClear();
+        env->DeleteLocalRef(buildVersionClass);
+        return;
+    }
+
+    oldValue = env->GetStaticIntField(buildVersionClass, sdkIntFieldID);
+    targetSdk = std::min(oldValue, requestSdk);
+
+    if (oldValue == targetSdk) {
+        env->DeleteLocalRef(buildVersionClass);
+        return;
+    }
+
+    env->SetStaticIntField(buildVersionClass, sdkIntFieldID, targetSdk);
+
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        LOGE("SDK_INT field not accessible (JNI Exception)");
+    } else {
+        LOGE("[SDK_INT]: %d -> %d", oldValue, targetSdk);
+    }
+
+    env->DeleteLocalRef(buildVersionClass);
+}
+
 static void parseJSON() {
     if (json.empty())
         return;
+
+    if (json.contains("spoofVendingSdk") && json["spoofVendingSdk"].is_boolean()) {
+        spoofVendingSdk = json["spoofVendingSdk"].get<bool>();
+        json.erase("spoofVendingSdk");
+    }
+
+    if (isVending) {
+        json.clear();
+        return;
+    }
 
     if (json.contains("DEVICE_INITIAL_SDK_INT")) {
         if (json["DEVICE_INITIAL_SDK_INT"].is_string()) {
@@ -264,7 +321,9 @@ static void injectDex() {
 }
 
 extern "C" [[gnu::visibility("default"), maybe_unused]] bool
-init(JavaVM *vm, const std::string &gmsDir, bool trickyStore, bool testSignedRom) {
+init(JavaVM *vm, const std::string &gmsDir, bool trickyStore, bool testSignedRom, bool isGmsUnstable, bool isVending) {
+    ::isGmsUnstable = isGmsUnstable;
+    ::isVending = isVending;
 
     if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
         LOGE("[INJECT] JNI_ERR!");
@@ -291,16 +350,20 @@ init(JavaVM *vm, const std::string &gmsDir, bool trickyStore, bool testSignedRom
         spoofSignature = true;
     }
 
-    UpdateBuildFields();
+    if (isGmsUnstable) {
+        UpdateBuildFields();
 
-    if (spoofProvider || spoofSignature) {
-        injectDex();
-    } else {
-        LOGD("[INJECT] Dex file won't be injected due spoofProvider and spoofSignature are false");
-    }
+        if (spoofProvider || spoofSignature) {
+            injectDex();
+        } else {
+            LOGD("[INJECT] Dex file won't be injected due spoofProvider and spoofSignature are false");
+        }
 
-    if (spoofProps) {
-        return !doHook();
+        if (spoofProps) {
+            return !doHook();
+        }
+    } else if (isVending && spoofVendingSdk) {
+        doSpoofVending();
     }
 
     return true;

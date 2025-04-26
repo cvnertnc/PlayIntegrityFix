@@ -20,6 +20,9 @@
 #define CUSTOM_JSON_FORK "/data/adb/modules/playintegrityfix/custom.pif.json"
 #define CUSTOM_JSON "/data/adb/pif.json"
 
+#define VENDING_PACKAGE "com.android.vending"
+#define DROIDGUARD_PACKAGE "com.google.android.gms.unstable"
+
 static ssize_t xread(int fd, void *buffer, size_t count) {
     ssize_t total = 0;
     auto buf = static_cast<char *>(buffer);
@@ -162,16 +165,23 @@ public:
             env->ReleaseStringUTFChars(args->nice_name, rawName);
         }
 
-        bool isGms = dir.ends_with("/com.google.android.gms");
-        bool isGmsUnstable = isGms && name == "com.google.android.gms.unstable";
+        std::string_view vDir(dir);
+        bool isGms =
+                vDir.ends_with("/com.google.android.gms") || vDir.ends_with("/com.android.vending");
 
         if (!isGms)
             return;
 
         api->setOption(FORCE_DENYLIST_UNMOUNT);
 
-        if (!isGmsUnstable)
+        std::string_view vName(name);
+        isGmsUnstable = vName == DROIDGUARD_PACKAGE;
+        isVending = vName == VENDING_PACKAGE;
+
+        if (!isGmsUnstable && !isVending) {
+            api->setOption(DLCLOSE_MODULE_LIBRARY);
             return;
+        }
 
         auto fd = api->connectCompanion();
 
@@ -197,7 +207,7 @@ public:
         if (gmsDir.empty())
             return;
 
-        typedef bool (*InitFuncPtr)(JavaVM *, const std::string &, bool, bool);
+        typedef bool (*InitFuncPtr)(JavaVM *, const std::string &, bool, bool, bool, bool);
 
         void *handle = dlopen((gmsDir + "/libinject.so").c_str(), RTLD_NOW);
 
@@ -209,7 +219,7 @@ public:
         JavaVM *vm = nullptr;
         env->GetJavaVM(&vm);
 
-        if (init_func(vm, gmsDir, trickyStore, testSignedRom)) {
+        if (init_func(vm, gmsDir, trickyStore, testSignedRom, isGmsUnstable, isVending)) {
             LOGD("dlclose injected lib");
             dlclose(handle);
         }
@@ -225,6 +235,8 @@ private:
     std::string gmsDir;
     bool trickyStore = false;
     bool testSignedRom = false;
+    bool isGmsUnstable = false;
+    bool isVending = false;
 };
 
 REGISTER_ZYGISK_MODULE(PlayIntegrityFix)
