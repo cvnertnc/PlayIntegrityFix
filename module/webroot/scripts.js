@@ -4,6 +4,11 @@ let currentFontSize = 14;
 const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
 
+const spoofVendingSdkToggle = document.getElementById('toggle-sdk-vending');
+const spoofConfig = [
+    { container: "sdk-vending-toggle-container", toggle: spoofVendingSdkToggle, type: 'spoofVendingSdk' }
+];
+
 /**
  * Executes a shell command with KernelSU privileges
  * @param {string} command - The shell command to execute
@@ -140,6 +145,56 @@ async function loadVersionFromModuleProp() {
         appendToOutput("[!] Failed to read version from module.prop");
         console.error("Failed to read version from module.prop:", error);
     }
+}
+
+// Function to load spoof config
+async function loadSpoofConfig() {
+    try {
+        const pifJson = await exec(`cat /data/adb/modules/playintegrityfix/pif.json`);
+        const config = JSON.parse(pifJson);
+        spoofVendingSdkToggle.checked = config.spoofVendingSdk;
+    } catch (error) {
+        appendToOutput(`[!] Failed to load spoof config`);
+        console.error(`Failed to load spoof config:`, error);
+    }
+}
+
+// Function to setup spoof config button
+function setupSpoofConfigButton(container, toggle, type) {
+    document.getElementById(container).addEventListener('click', async () => {
+        if (shellRunning) return;
+        shellRunning = true;
+        try {
+            const pifFile = await exec(`
+                [ ! -f /data/adb/modules/playintegrityfix/pif.json ] || echo "/data/adb/modules/playintegrityfix/pif.json"
+                [ ! -f /data/adb/pif.json ] || echo "/data/adb/pif.json"
+            `);
+            const files = pifFile.split('\n').filter(line => line.trim() !== '');
+            for (const line of files) {
+                await updateSpoofConfig(toggle, type, line.trim());
+            }
+            exec(`
+                killall com.google.android.gms.unstable || true
+                killall com.android.vending || true
+            `);
+            loadSpoofConfig();
+            appendToOutput(`[+] Changed ${type} config to ${!toggle.checked}`);
+        } catch (error) {
+            appendToOutput(`[!] Failed to update ${type} config`);
+            console.error(`Failed to update ${type} config:`, error);
+        }
+        shellRunning = false;
+    });
+}
+
+// Function to update spoof config
+async function updateSpoofConfig(toggle, type, pifFile) {
+    const isChecked = toggle.checked;
+    const pifJson = await exec(`cat ${pifFile}`);
+    const config = JSON.parse(pifJson);
+    config[type] = !isChecked;
+    const newPifJson = JSON.stringify(config, null, 2);
+    await exec(`echo '${newPifJson}' > ${pifFile}`);
 }
 
 // Function to load preview fingerprint config
@@ -282,6 +337,10 @@ function updateFontSize(newSize) {
 document.addEventListener('DOMContentLoaded', async () => {
     checkMMRL();
     loadVersionFromModuleProp();
+    await loadSpoofConfig();
+    spoofConfig.forEach(config => {
+        setupSpoofConfigButton(config.container, config.toggle, config.type);
+    });
     loadPreviewFingerprintConfig();
     applyButtonEventListeners();
     applyRippleEffect();
