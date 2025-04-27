@@ -321,7 +321,7 @@ static void injectDex() {
 }
 
 extern "C" [[gnu::visibility("default"), maybe_unused]] bool
-init(JavaVM *vm, const std::string &gmsDir, bool trickyStore, bool testSignedRom, bool isGmsUnstable, bool isVending) {
+init(JavaVM *vm, const std::string &gmsDir, bool isGmsUnstable, bool isVending) {
     ::isGmsUnstable = isGmsUnstable;
     ::isVending = isVending;
 
@@ -338,17 +338,6 @@ init(JavaVM *vm, const std::string &gmsDir, bool trickyStore, bool testSignedRom
     fclose(f);
 
     parseJSON();
-
-    if (trickyStore) {
-        spoofProvider = false;
-        spoofSignature = false;
-        spoofProps = false;
-    }
-
-    if (testSignedRom) {
-        spoofProvider = true;
-        spoofSignature = true;
-    }
 
     if (isGmsUnstable) {
         UpdateBuildFields();
