@@ -62,7 +62,7 @@ if [ -d "/data/adb/modules/MagiskHidePropsConf" ]; then
 fi
 
 # Preserve previous setting
-spoofConfig="spoofVendingSdk"
+spoofConfig="spoofProvider spoofProps spoofSignature DEBUG spoofVendingSdk"
 for config in $spoofConfig; do
     grep -q "$config" "/data/adb/modules/playintegrityfix/pif.json" || continue
     if grep -q "\"$config\": true" "/data/adb/modules/playintegrityfix/pif.json"; then
