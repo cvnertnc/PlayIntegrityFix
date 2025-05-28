@@ -1,6 +1,6 @@
 id=playintegrityfix
 name=Play Integrity Fix [INJECT]
-version=v3-inject
-versionCode=3
-author=chiteroman
+version=v3.1-inject
+versionCode=31
+author=cvnertnc
 description=Universal modular fix for Play Integrity (and SafetyNet) on devices running Android 8-15
